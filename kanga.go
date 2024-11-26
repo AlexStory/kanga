@@ -1,8 +1,10 @@
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/alexstory/kanga/data"
@@ -15,50 +17,48 @@ type LabelValuePair struct {
 
 func main() {
 	flag.Parse()
-	data.Init()
-
 	db, err := data.Init()
 	if err != nil {
-		fmt.Printf("Failed to initialize database: %v\n", err)
-		return
+		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
+	if flag.NArg() == 0 {
+		printHelp("")
+		return
+	}
+
 	switch flag.Arg(0) {
 	case "heads":
-		flips, heads, err := data.HeadsInfo(db)
+		totalFlips, headsCount, err := data.HeadsInfo(db)
 		if err != nil {
 			fmt.Printf("Failed to get heads info: %v\n", err)
+			return
 		}
-
 		dataPairs := []LabelValuePair{
-			{"Total flips", fmt.Sprintf("%d", flips)},
-			{"Heads count", fmt.Sprintf("%d", heads)},
-			{"Heads percentage", fmt.Sprintf("%.2f%%", percentage(heads, flips))},
+			{"Total flips", fmt.Sprintf("%d", totalFlips)},
+			{"Heads count", fmt.Sprintf("%d", headsCount)},
+			{"Heads percentage", fmt.Sprintf("%.2f%%", percentage(headsCount, totalFlips))},
 		}
-
 		printTable("HEADS INFO", dataPairs)
-
 	case "tails":
-		flips, tails, err := data.TailsInfo(db)
+		totalFlips, tailsCount, err := data.TailsInfo(db)
 		if err != nil {
 			fmt.Printf("Failed to get tails info: %v\n", err)
+			return
 		}
-
 		dataPairs := []LabelValuePair{
-			{"Total flips", fmt.Sprintf("%d", flips)},
-			{"Tails count", fmt.Sprintf("%d", tails)},
-			{"Tails percentage", fmt.Sprintf("%.2f%%", percentage(tails, flips))},
+			{"Total flips", fmt.Sprintf("%d", totalFlips)},
+			{"Tails count", fmt.Sprintf("%d", tailsCount)},
+			{"Tails percentage", fmt.Sprintf("%.2f%%", percentage(tailsCount, totalFlips))},
 		}
-
 		printTable("TAILS INFO", dataPairs)
-
 	case "stats":
 		stats, err := data.Flips(db)
 		if err != nil {
 			fmt.Printf("Failed to get stats: %v\n", err)
+			return
 		}
-
 		dataPairs := []LabelValuePair{
 			{"Total flips", fmt.Sprintf("%d", stats.TotalFlips)},
 			{"Double heads", fmt.Sprintf("%d", stats.DoubleHeads)},
@@ -70,21 +70,21 @@ func main() {
 			{"Double heads percentage", fmt.Sprintf("%.2f%%", percentage(stats.DoubleHeads, stats.TotalFlips))},
 			{"Double tails percentage", fmt.Sprintf("%.2f%%", percentage(stats.DoubleTails, stats.TotalFlips))},
 		}
-
 		printTable("STATISTICS", dataPairs)
-
 	case "TT", "tt":
-		data.TT(db)
+		data.InsertFlip(db, data.TT)
 		fmt.Printf("flip logged... RIP\n")
 	case "HH", "hh":
-		data.HH(db)
+		data.InsertFlip(db, data.HH)
 		fmt.Printf("flip logged...\n")
 	case "HT", "ht":
-		data.HT(db)
+		data.InsertFlip(db, data.HT)
 		fmt.Printf("flip logged...\n")
 	case "TH", "th":
-		data.TH(db)
+		data.InsertFlip(db, data.TH)
 		fmt.Printf("flip logged...\n")
+	case "egg":
+		handleEggCommand(db)
 	case "reset":
 		data.Reset(db)
 		fmt.Printf("Data reset\n")
@@ -101,25 +101,73 @@ func main() {
 		if err != nil {
 			fmt.Printf("Failed to dump CSV: %v\n", err)
 		} else {
-			fmt.Printf("data dumped to dumped to %s\n", filename)
+			fmt.Printf("Data dumped to %s\n", filename)
 		}
 	case "read-csv":
 		if flag.NArg() < 2 {
 			fmt.Println("Usage: kanga read-csv <filename>")
 			return
 		}
-
 		filename := flag.Arg(1)
 		err := data.ReadCsv(db, filename)
 		if err != nil {
 			fmt.Printf("Failed to read CSV: %v\n", err)
 		} else {
-			fmt.Printf("data read from %s\n", filename)
+			fmt.Printf("Data read from %s\n", filename)
 		}
-
+	case "help":
+		if flag.NArg() < 2 {
+			printHelp("")
+		} else {
+			printHelp(flag.Arg(1))
+		}
 	default:
-		printHelp()
+		printHelp("")
 	}
+}
+
+func handleEggCommand(db *sql.DB) {
+	if flag.NArg() < 2 {
+		fmt.Println("Usage: kanga egg <command>")
+		fmt.Println("use `kanga help egg` for more info")
+		return
+	}
+	arg := flag.Arg(1)
+	if arg == "stats" {
+		stats, err := data.GetEggStats(db)
+		if err != nil {
+			fmt.Printf("Failed to get egg stats: %v\n", err)
+			return
+		}
+		dataPairs := []LabelValuePair{
+			{"Total flips", fmt.Sprintf("%d", stats.TotalEntries)},
+			{"Total heads", fmt.Sprintf("%d", stats.TotalHeads)},
+			{"Total tails", fmt.Sprintf("%d", stats.TotalTails)},
+			{"Heads percentage", fmt.Sprintf("%.2f%%", percentage(stats.TotalHeads, stats.TotalEntries))},
+			{"Tails percentage", fmt.Sprintf("%.2f%%", percentage(stats.TotalTails, stats.TotalEntries))},
+			{"Heads that mattered", fmt.Sprintf("%d", stats.HeadsMattered)},
+			{"Percent when it mattered", fmt.Sprintf("%.2f%%", percentage(stats.HeadsMattered, stats.TotalEntries-stats.TotalNotMattered))},
+		}
+		printTable("EGG STATS", dataPairs)
+		return
+	}
+	var eggType data.EggType
+	switch arg {
+	case "H", "h":
+		eggType = data.H
+	case "HX", "hx":
+		eggType = data.HX
+	case "T", "t":
+		eggType = data.T
+	case "TX", "tx":
+		eggType = data.TX
+	default:
+		fmt.Println("Invalid argument for egg command.")
+		fmt.Println("use `kanga help egg` for more info")
+		return
+	}
+	data.InsertExeggutor(db, eggType)
+	fmt.Println("Exeggutor entry logged...")
 }
 
 func percentage(part, total int) float64 {
@@ -156,18 +204,64 @@ func printTable(title string, dataPairs []LabelValuePair) {
 	fmt.Println(border)
 }
 
-func printHelp() {
-	fmt.Println("Usage: kanga [command]")
-	fmt.Println("Commands:")
-	fmt.Println("  heads       Show heads info")
-	fmt.Println("  tails       Show tails info")
-	fmt.Println("  stats       Show statistics")
-	fmt.Println("  TT, tt      Log a double tails flip")
-	fmt.Println("  HH, hh      Log a double heads flip")
-	fmt.Println("  HT, ht      Log a heads-tails flip")
-	fmt.Println("  TH, th      Log a tails-heads flip")
-	fmt.Println("  reset       Reset the data")
-	fmt.Println("  undo        Undo the last flip")
-	fmt.Println("  dump-csv    Dump the data to a CSV file")
-	fmt.Println("  read-csv    Read the data from a CSV file (! this overwrites the current dataset)")
+func printHelp(command string) {
+	switch command {
+	case "heads":
+		fmt.Println("Usage: kanga heads")
+		fmt.Println("Show heads info")
+	case "tails":
+		fmt.Println("Usage: kanga tails")
+		fmt.Println("Show tails info")
+	case "stats":
+		fmt.Println("Usage: kanga stats")
+		fmt.Println("Show statistics")
+	case "TT", "tt":
+		fmt.Println("Usage: kanga TT")
+		fmt.Println("Log a double tails flip")
+	case "HH", "hh":
+		fmt.Println("Usage: kanga HH")
+		fmt.Println("Log a double heads flip")
+	case "HT", "ht":
+		fmt.Println("Usage: kanga HT")
+		fmt.Println("Log a heads-tails flip")
+	case "TH", "th":
+		fmt.Println("Usage: kanga TH")
+		fmt.Println("Log a tails-heads flip")
+	case "egg":
+		fmt.Println("Usage: kanga egg <H|HX|T|TX|stats>")
+		fmt.Println("Log an exeggutor entry or show stats")
+		fmt.Println("  H   - Log a heads")
+		fmt.Println("  T   - Log a tails")
+		fmt.Println("  HX  - Log a heads, but... the result didn't really matter")
+		fmt.Println("  TX  - Log a tails, but... the result didn't really matter")
+		fmt.Println("  stats - Show exeggutor statistics")
+	case "reset":
+		fmt.Println("Usage: kanga reset")
+		fmt.Println("Reset the database")
+	case "undo":
+		fmt.Println("Usage: kanga undo")
+		fmt.Println("Undo the last action")
+	case "dump-csv":
+		fmt.Println("Usage: kanga dump-csv <filename>")
+		fmt.Println("Dump the data to a CSV file")
+	case "read-csv":
+		fmt.Println("Usage: kanga read-csv <filename>")
+		fmt.Println("Read the data from a CSV file (! this overwrites the current dataset)")
+	default:
+		fmt.Println("Usage: kanga [command]")
+		fmt.Println("Commands:")
+		fmt.Println("  heads       Show heads info")
+		fmt.Println("  tails       Show tails info")
+		fmt.Println("  stats       Show statistics")
+		fmt.Println("  TT, tt      Log a double tails flip")
+		fmt.Println("  HH, hh      Log a double heads flip")
+		fmt.Println("  HT, ht      Log a heads-tails flip")
+		fmt.Println("  TH, th      Log a tails-heads flip")
+		fmt.Println("  egg         Log an exeggutor entry (H, HX, T, TX) or show stats")
+		fmt.Println("  reset       Reset the database")
+		fmt.Println("  undo        Undo the last action")
+		fmt.Println("  dump-csv    Dump the data to a CSV file")
+		fmt.Println("  read-csv    Read the data from a CSV file (! this overwrites the current dataset)")
+		fmt.Println("  help        Show this help message, or help for a specific command")
+	}
 }

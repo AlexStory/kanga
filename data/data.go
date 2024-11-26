@@ -10,12 +10,38 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type FlipType int
+
+const (
+	TT FlipType = iota
+	HH
+	TH
+	HT
+)
+
+type EggType int
+
+const (
+	H EggType = iota
+	HX
+	T
+	TX
+)
+
 type Stats struct {
 	TotalFlips  int
 	DoubleHeads int
 	DoubleTails int
 	TotalHeads  int
 	TotalTails  int
+}
+
+type EggStats struct {
+	TotalEntries     int
+	TotalHeads       int
+	TotalTails       int
+	TotalNotMattered int
+	HeadsMattered    int
 }
 
 func Init() (*sql.DB, error) {
@@ -36,13 +62,24 @@ func Init() (*sql.DB, error) {
 		return nil, err
 	}
 
-	createTableSQL := `CREATE TABLE IF NOT EXISTS flips (
+	createFlipsTableSQL := `CREATE TABLE IF NOT EXISTS flips (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		heads1 INTEGER NOT NULL,
 		heads2 INTEGER NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
-	_, err = db.Exec(createTableSQL)
+	_, err = db.Exec(createFlipsTableSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	createExeggutorTableSQL := `CREATE TABLE IF NOT EXISTS exeggutor (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		heads INTEGER NOT NULL,
+		mattered BOOLEAN DEFAULT TRUE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+	_, err = db.Exec(createExeggutorTableSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -112,54 +149,80 @@ func Flips(db *sql.DB) (stats Stats, err error) {
 	return
 }
 
-func TT(db *sql.DB) {
+func InsertFlip(db *sql.DB, flipType FlipType) {
+	var heads1, heads2 int
+	switch flipType {
+	case TT:
+		heads1, heads2 = 0, 0
+	case HH:
+		heads1, heads2 = 1, 1
+	case TH:
+		heads1, heads2 = 0, 1
+	case HT:
+		heads1, heads2 = 1, 0
+	}
+
 	stmt := `
 	INSERT INTO flips (heads1, heads2, created_at)
-	VALUES (0, 0, CURRENT_TIMESTAMP)	
+	VALUES (?, ?, CURRENT_TIMESTAMP)
 `
-	_, err := db.Exec(stmt)
+	_, err := db.Exec(stmt, heads1, heads2)
 	if err != nil {
 		fmt.Printf("Failed to insert flip: %v\n", err)
 	}
 }
 
-func HH(db *sql.DB) {
+func InsertExeggutor(db *sql.DB, eggType EggType) {
+	var heads int
+	var mattered bool
+	switch eggType {
+	case H:
+		heads = 1
+		mattered = true
+	case HX:
+		heads = 1
+		mattered = false
+	case T:
+		heads = 0
+		mattered = true
+	case TX:
+		heads = 0
+		mattered = false
+	}
+
 	stmt := `
-	INSERT INTO flips (heads1, heads2, created_at)
-	VALUES (1, 1, CURRENT_TIMESTAMP)	
+	INSERT INTO exeggutor (heads, mattered, created_at)
+	VALUES (?, ?, CURRENT_TIMESTAMP)
 `
-	_, err := db.Exec(stmt)
+	_, err := db.Exec(stmt, heads, mattered)
 	if err != nil {
-		fmt.Printf("Failed to insert flip: %v\n", err)
+		fmt.Printf("Failed to insert exeggutor entry: %v\n", err)
 	}
 }
 
-func HT(db *sql.DB) {
-	stmt := `
-	INSERT INTO flips (heads1, heads2, created_at)
-	VALUES (1, 0, CURRENT_TIMESTAMP)	
-`
-	_, err := db.Exec(stmt)
+func GetEggStats(db *sql.DB) (stats EggStats, err error) {
+	err = db.QueryRow("SELECT COUNT(*), IFNULL(SUM(heads), 0), IFNULL(SUM(CASE WHEN heads = 0 THEN 1 ELSE 0 END), 0) FROM exeggutor").Scan(&stats.TotalEntries, &stats.TotalHeads, &stats.TotalTails)
 	if err != nil {
-		fmt.Printf("Failed to insert flip: %v\n", err)
+		return
 	}
-}
 
-func TH(db *sql.DB) {
-	stmt := `
-	INSERT INTO flips (heads1, heads2, created_at)
-	VALUES (0, 1, CURRENT_TIMESTAMP)	
-`
-	_, err := db.Exec(stmt)
+	err = db.QueryRow("SELECT COUNT(*) FROM exeggutor WHERE mattered = 0").Scan(&stats.TotalNotMattered)
 	if err != nil {
-		fmt.Printf("Failed to insert flip: %v\n", err)
+		return
 	}
+
+	err = db.QueryRow("SELECT COUNT(*) FROM exeggutor WHERE heads = 1 AND mattered = 1").Scan(&stats.HeadsMattered)
+	return
 }
 
 func Reset(db *sql.DB) {
 	_, err := db.Exec("DELETE FROM flips")
 	if err != nil {
-		fmt.Printf("Failed to reset database: %v\n", err)
+		fmt.Printf("Failed to reset flips table: %v\n", err)
+	}
+	_, err = db.Exec("DELETE FROM exeggutor")
+	if err != nil {
+		fmt.Printf("Failed to reset exeggutor table: %v\n", err)
 	}
 }
 
