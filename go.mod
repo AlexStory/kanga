@@ -1,4 +1,4 @@
-module kanga
+module github.com/alexstory/kanga
 
 go 1.23.2
 

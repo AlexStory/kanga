@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"kanga/data"
 	"strings"
+
+	"github.com/alexstory/kanga/data"
 )
 
 type LabelValuePair struct {
