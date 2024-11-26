@@ -163,8 +163,9 @@ func handleEggCommand(db *sql.DB) {
 			{"Tails percentage", fmt.Sprintf("%.2f%%", percentage(stats.TotalTails, stats.TotalEntries))},
 			{"Heads that mattered", fmt.Sprintf("%d", stats.HeadsMattered)},
 			{"Percent when it mattered", fmt.Sprintf("%.2f%%", percentage(stats.HeadsMattered, stats.TotalEntries-stats.TotalNotMattered))},
+			{"Average damage", fmt.Sprintf("%d", ((stats.TotalHeads*80)+(stats.TotalTails*40))/stats.TotalEntries)},
 		}
-		printTable("EGGEGGUTOR STATS", dataPairs)
+		printTable("EXEGGUTOR STATS", dataPairs)
 		return
 	}
 	var eggType data.EggType
@@ -177,6 +178,10 @@ func handleEggCommand(db *sql.DB) {
 		eggType = data.T
 	case "TX", "tx":
 		eggType = data.TX
+	case "undo":
+		data.UndoEgg(db)
+		fmt.Println("Last exeggutor flip undone...")
+		return
 	default:
 		fmt.Println("Invalid argument for egg command.")
 		fmt.Println("use `kanga help egg` for more info")
