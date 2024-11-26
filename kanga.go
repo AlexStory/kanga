@@ -16,7 +16,10 @@ type LabelValuePair struct {
 }
 
 func main() {
+	kangaFlag := flag.Bool("kanga", false, "Operate on kanga table")
+	eggFlag := flag.Bool("egg", false, "Operate on exeggutor table")
 	flag.Parse()
+
 	db, err := data.Init()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
@@ -28,7 +31,13 @@ func main() {
 		return
 	}
 
-	switch flag.Arg(0) {
+	command := flag.Arg(0)
+	folder := "."
+	if flag.NArg() >= 2 {
+		folder = flag.Arg(1)
+	}
+
+	switch command {
 	case "heads":
 		totalFlips, headsCount, err := data.HeadsInfo(db)
 		if err != nil {
@@ -92,28 +101,30 @@ func main() {
 		data.Undo(db)
 		fmt.Printf("Last flip undone\n")
 	case "dump-csv":
-		if flag.NArg() < 2 {
-			fmt.Println("Usage: kanga dump-csv <filename>")
-			return
+		table := ""
+		if *kangaFlag {
+			table = "kanga"
+		} else if *eggFlag {
+			table = "egg"
 		}
-		filename := flag.Arg(1)
-		err := data.DumpCsv(db, filename)
+		err := data.DumpCsv(db, folder, table)
 		if err != nil {
 			fmt.Printf("Failed to dump CSV: %v\n", err)
 		} else {
-			fmt.Printf("Data dumped to %s\n", filename)
+			fmt.Printf("Data dumped to %s\n", folder)
 		}
 	case "read-csv":
-		if flag.NArg() < 2 {
-			fmt.Println("Usage: kanga read-csv <filename>")
-			return
+		table := ""
+		if *kangaFlag {
+			table = "kanga"
+		} else if *eggFlag {
+			table = "egg"
 		}
-		filename := flag.Arg(1)
-		err := data.ReadCsv(db, filename)
+		err := data.ReadCsv(db, folder, table)
 		if err != nil {
 			fmt.Printf("Failed to read CSV: %v\n", err)
 		} else {
-			fmt.Printf("Data read from %s\n", filename)
+			fmt.Printf("Data read from %s\n", folder)
 		}
 	case "help":
 		if flag.NArg() < 2 {
@@ -128,8 +139,13 @@ func main() {
 
 func handleEggCommand(db *sql.DB) {
 	if flag.NArg() < 2 {
-		fmt.Println("Usage: kanga egg <command>")
-		fmt.Println("use `kanga help egg` for more info")
+		fmt.Println("Usage: kanga egg <H|HX|T|TX|stats>")
+		fmt.Println("Log an exeggutor entry or show stats")
+		fmt.Println("  H   - Log a heads")
+		fmt.Println("  T   - Log a tails")
+		fmt.Println("  HX  - Log a heads, but... the result didn't really matter")
+		fmt.Println("  TX  - Log a tails, but... the result didn't really matter")
+		fmt.Println("  stats - Show exeggutor statistics")
 		return
 	}
 	arg := flag.Arg(1)
@@ -148,7 +164,7 @@ func handleEggCommand(db *sql.DB) {
 			{"Heads that mattered", fmt.Sprintf("%d", stats.HeadsMattered)},
 			{"Percent when it mattered", fmt.Sprintf("%.2f%%", percentage(stats.HeadsMattered, stats.TotalEntries-stats.TotalNotMattered))},
 		}
-		printTable("EGG STATS", dataPairs)
+		printTable("EGGEGGUTOR STATS", dataPairs)
 		return
 	}
 	var eggType data.EggType
@@ -242,11 +258,11 @@ func printHelp(command string) {
 		fmt.Println("Usage: kanga undo")
 		fmt.Println("Undo the last action")
 	case "dump-csv":
-		fmt.Println("Usage: kanga dump-csv <filename>")
-		fmt.Println("Dump the data to a CSV file")
+		fmt.Println("Usage: kanga dump-csv [folder]")
+		fmt.Println("Dump the data to CSV files in the specified folder (default: current directory)")
 	case "read-csv":
-		fmt.Println("Usage: kanga read-csv <filename>")
-		fmt.Println("Read the data from a CSV file (! this overwrites the current dataset)")
+		fmt.Println("Usage: kanga read-csv [folder]")
+		fmt.Println("Read the data from CSV files in the specified folder (default: current directory)")
 	default:
 		fmt.Println("Usage: kanga [command]")
 		fmt.Println("Commands:")
@@ -260,8 +276,8 @@ func printHelp(command string) {
 		fmt.Println("  egg         Log an exeggutor entry (H, HX, T, TX) or show stats")
 		fmt.Println("  reset       Reset the database")
 		fmt.Println("  undo        Undo the last action")
-		fmt.Println("  dump-csv    Dump the data to a CSV file")
-		fmt.Println("  read-csv    Read the data from a CSV file (! this overwrites the current dataset)")
+		fmt.Println("  dump-csv    Dump the data to CSV files")
+		fmt.Println("  read-csv    Read the data from CSV files")
 		fmt.Println("  help        Show this help message, or help for a specific command")
 	}
 }

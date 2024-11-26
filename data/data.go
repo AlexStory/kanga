@@ -237,14 +237,48 @@ func Undo(db *sql.DB) {
 	}
 }
 
-func DumpCsv(db *sql.DB, path string) error {
-	rows, err := db.Query("SELECT heads1, heads2, created_at FROM flips")
+func DumpCsv(db *sql.DB, folder string, table string) error {
+	if table == "" || table == "kanga" {
+		err := dumpTable(db, folder, "kanga")
+		if err != nil {
+			return err
+		}
+	}
+	if table == "" || table == "egg" {
+		err := dumpTable(db, folder, "egg")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func dumpTable(db *sql.DB, folder string, table string) error {
+	var query, filename string
+	switch table {
+	case "kanga":
+		query = "SELECT heads1, heads2, created_at FROM flips"
+		filename = "kanga.csv"
+	case "egg":
+		query = "SELECT heads, mattered, created_at FROM exeggutor"
+		filename = "exeggutor.csv"
+	default:
+		return fmt.Errorf("unknown table: %s", table)
+	}
+
+	// Create the folder if it doesn't exist
+	if err := os.MkdirAll(folder, os.ModePerm); err != nil {
+		return err
+	}
+
+	rows, err := db.Query(query)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
-	file, err := os.Create(path)
+	filePath := filepath.Join(folder, filename)
+	file, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
@@ -254,13 +288,25 @@ func DumpCsv(db *sql.DB, path string) error {
 	defer writer.Flush()
 
 	for rows.Next() {
-		var heads1, heads2 int
-		var createdAt string
-		err := rows.Scan(&heads1, &heads2, &createdAt)
-		if err != nil {
-			return err
+		var record []string
+		if table == "kanga" {
+			var heads1, heads2 int
+			var createdAt string
+			err := rows.Scan(&heads1, &heads2, &createdAt)
+			if err != nil {
+				return err
+			}
+			record = []string{fmt.Sprintf("%d", heads1), fmt.Sprintf("%d", heads2), createdAt}
+		} else {
+			var heads int
+			var mattered bool
+			var createdAt string
+			err := rows.Scan(&heads, &mattered, &createdAt)
+			if err != nil {
+				return err
+			}
+			record = []string{fmt.Sprintf("%d", heads), fmt.Sprintf("%t", mattered), createdAt}
 		}
-		record := []string{fmt.Sprintf("%d", heads1), fmt.Sprintf("%d", heads2), createdAt}
 		err = writer.Write(record)
 		if err != nil {
 			return err
@@ -270,8 +316,37 @@ func DumpCsv(db *sql.DB, path string) error {
 	return rows.Err()
 }
 
-func ReadCsv(db *sql.DB, path string) error {
-	file, err := os.Open(path)
+func ReadCsv(db *sql.DB, folder string, table string) error {
+	if table == "" || table == "kanga" {
+		err := readTable(db, folder, "kanga")
+		if err != nil {
+			return err
+		}
+	}
+	if table == "" || table == "egg" {
+		err := readTable(db, folder, "egg")
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readTable(db *sql.DB, folder string, table string) error {
+	var query, filename string
+	switch table {
+	case "kanga":
+		query = "INSERT INTO flips (heads1, heads2, created_at) VALUES (?, ?, ?)"
+		filename = "kanga.csv"
+	case "egg":
+		query = "INSERT INTO exeggutor (heads, mattered, created_at) VALUES (?, ?, ?)"
+		filename = "exeggutor.csv"
+	default:
+		return fmt.Errorf("unknown table: %s", table)
+	}
+
+	filePath := filepath.Join(folder, filename)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
@@ -288,24 +363,39 @@ func ReadCsv(db *sql.DB, path string) error {
 		return err
 	}
 
-	stmt, err := tx.Prepare("INSERT INTO flips (heads1, heads2, created_at) VALUES (?, ?, ?)")
+	stmt, err := tx.Prepare(query)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, record := range records {
-		if len(record) != 3 {
-			tx.Rollback()
-			return fmt.Errorf("invalid record: %v", record)
-		}
-		heads1 := record[0]
-		heads2 := record[1]
-		createdAt := record[2]
-		_, err := stmt.Exec(heads1, heads2, createdAt)
-		if err != nil {
-			tx.Rollback()
-			return err
+		if table == "kanga" {
+			if len(record) != 3 {
+				tx.Rollback()
+				return fmt.Errorf("invalid record: %v", record)
+			}
+			heads1 := record[0]
+			heads2 := record[1]
+			createdAt := record[2]
+			_, err := stmt.Exec(heads1, heads2, createdAt)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
+		} else {
+			if len(record) != 3 {
+				tx.Rollback()
+				return fmt.Errorf("invalid record: %v", record)
+			}
+			heads := record[0]
+			mattered := record[1]
+			createdAt := record[2]
+			_, err := stmt.Exec(heads, mattered, createdAt)
+			if err != nil {
+				tx.Rollback()
+				return err
+			}
 		}
 	}
 
@@ -313,5 +403,6 @@ func ReadCsv(db *sql.DB, path string) error {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
