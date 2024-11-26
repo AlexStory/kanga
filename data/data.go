@@ -39,9 +39,21 @@ func Init() (*sql.DB, error) {
 	createTableSQL := `CREATE TABLE IF NOT EXISTS flips (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		heads1 INTEGER NOT NULL,
-		heads2 INTEGER NOT NULL
+		heads2 INTEGER NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, err = db.Exec(createTableSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create indexes
+	_, err = db.Exec("CREATE INDEX IF NOT EXISTS idx_heads1 ON flips (heads1);")
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = db.Exec("CREATE INDEX IF NOT EXISTS idx_heads2 ON flips (heads2);")
 	if err != nil {
 		return nil, err
 	}
@@ -102,8 +114,8 @@ func Flips(db *sql.DB) (stats Stats, err error) {
 
 func TT(db *sql.DB) {
 	stmt := `
-	INSERT INTO flips (heads1, heads2)
-	VALUES (0, 0)	
+	INSERT INTO flips (heads1, heads2, created_at)
+	VALUES (0, 0, CURRENT_TIMESTAMP)	
 `
 	_, err := db.Exec(stmt)
 	if err != nil {
@@ -113,8 +125,8 @@ func TT(db *sql.DB) {
 
 func HH(db *sql.DB) {
 	stmt := `
-	INSERT INTO flips (heads1, heads2)
-	VALUES (1, 1)	
+	INSERT INTO flips (heads1, heads2, created_at)
+	VALUES (1, 1, CURRENT_TIMESTAMP)	
 `
 	_, err := db.Exec(stmt)
 	if err != nil {
@@ -124,8 +136,8 @@ func HH(db *sql.DB) {
 
 func HT(db *sql.DB) {
 	stmt := `
-	INSERT INTO flips (heads1, heads2)
-	VALUES (1, 0)	
+	INSERT INTO flips (heads1, heads2, created_at)
+	VALUES (1, 0, CURRENT_TIMESTAMP)	
 `
 	_, err := db.Exec(stmt)
 	if err != nil {
@@ -135,8 +147,8 @@ func HT(db *sql.DB) {
 
 func TH(db *sql.DB) {
 	stmt := `
-	INSERT INTO flips (heads1, heads2)
-	VALUES (0, 1)	
+	INSERT INTO flips (heads1, heads2, created_at)
+	VALUES (0, 1, CURRENT_TIMESTAMP)	
 `
 	_, err := db.Exec(stmt)
 	if err != nil {
@@ -151,8 +163,19 @@ func Reset(db *sql.DB) {
 	}
 }
 
+func Undo(db *sql.DB) {
+	stmt := `
+	DELETE FROM flips
+	WHERE id = (SELECT MAX(id) FROM flips)
+`
+	_, err := db.Exec(stmt)
+	if err != nil {
+		fmt.Printf("Failed to undo flip: %v\n", err)
+	}
+}
+
 func DumpCsv(db *sql.DB, path string) error {
-	rows, err := db.Query("SELECT heads1, heads2 FROM flips")
+	rows, err := db.Query("SELECT heads1, heads2, created_at FROM flips")
 	if err != nil {
 		return err
 	}
@@ -169,11 +192,12 @@ func DumpCsv(db *sql.DB, path string) error {
 
 	for rows.Next() {
 		var heads1, heads2 int
-		err := rows.Scan(&heads1, &heads2)
+		var createdAt string
+		err := rows.Scan(&heads1, &heads2, &createdAt)
 		if err != nil {
 			return err
 		}
-		record := []string{fmt.Sprintf("%d", heads1), fmt.Sprintf("%d", heads2)}
+		record := []string{fmt.Sprintf("%d", heads1), fmt.Sprintf("%d", heads2), createdAt}
 		err = writer.Write(record)
 		if err != nil {
 			return err
@@ -201,20 +225,21 @@ func ReadCsv(db *sql.DB, path string) error {
 		return err
 	}
 
-	stmt, err := tx.Prepare("INSERT INTO flips (heads1, heads2) VALUES (?, ?)")
+	stmt, err := tx.Prepare("INSERT INTO flips (heads1, heads2, created_at) VALUES (?, ?, ?)")
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, record := range records {
-		if len(record) != 2 {
+		if len(record) != 3 {
 			tx.Rollback()
 			return fmt.Errorf("invalid record: %v", record)
 		}
 		heads1 := record[0]
 		heads2 := record[1]
-		_, err := stmt.Exec(heads1, heads2)
+		createdAt := record[2]
+		_, err := stmt.Exec(heads1, heads2, createdAt)
 		if err != nil {
 			tx.Rollback()
 			return err

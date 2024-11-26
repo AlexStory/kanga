@@ -21,6 +21,7 @@ func main() {
 		fmt.Printf("Failed to initialize database: %v\n", err)
 		return
 	}
+	defer db.Close()
 
 	switch flag.Arg(0) {
 	case "heads":
@@ -74,7 +75,7 @@ func main() {
 	case "TT", "tt":
 		data.TT(db)
 		fmt.Printf("flip logged... RIP\n")
-	case "HH, hh":
+	case "HH", "hh":
 		data.HH(db)
 		fmt.Printf("flip logged...\n")
 	case "HT", "ht":
@@ -82,9 +83,13 @@ func main() {
 		fmt.Printf("flip logged...\n")
 	case "TH", "th":
 		data.TH(db)
+		fmt.Printf("flip logged...\n")
 	case "reset":
 		data.Reset(db)
 		fmt.Printf("Data reset\n")
+	case "undo":
+		data.Undo(db)
+		fmt.Printf("Last flip undone\n")
 	case "dump-csv":
 		if flag.NArg() < 2 {
 			fmt.Println("Usage: kanga dump-csv <filename>")
@@ -111,7 +116,7 @@ func main() {
 			fmt.Printf("data read from %s\n", filename)
 		}
 
-	case "default":
+	default:
 		printHelp()
 	}
 }
@@ -161,6 +166,7 @@ func printHelp() {
 	fmt.Println("  HT, ht      Log a heads-tails flip")
 	fmt.Println("  TH, th      Log a tails-heads flip")
 	fmt.Println("  reset       Reset the data")
+	fmt.Println("  undo        Undo the last flip")
 	fmt.Println("  dump-csv    Dump the data to a CSV file")
 	fmt.Println("  read-csv    Read the data from a CSV file (! this overwrites the current dataset)")
 }

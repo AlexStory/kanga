@@ -1,3 +1,5 @@
 kanga
 kanga.db
 kanga.exe
+kanga.db-shm
+kanga.db-wal
