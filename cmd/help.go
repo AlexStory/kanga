@@ -34,6 +34,12 @@ func PrintHelp(command string) {
 		fmt.Println("  TX       Log a tails, but... the result didn't really matter")
 		fmt.Println("  stats    Show exeggutor statistics")
 		fmt.Println("  undo     Undo the last exeggutor entry")
+	case "misty":
+		fmt.Println("Usage: kanga misty <command>")
+		fmt.Println("Log a misty entry or show stats")
+		fmt.Println("  <number> Log a misty entry with the specified number of heads")
+		fmt.Println("  stats    Show misty statistics")
+		fmt.Println("  undo     Undo the last misty entry")
 	case "reset":
 		fmt.Println("Usage: kanga reset")
 		fmt.Println("Reset the database")
@@ -56,7 +62,8 @@ func PrintHelp(command string) {
 		fmt.Println("  HH, hh      Log a double heads flip")
 		fmt.Println("  HT, ht      Log a heads-tails flip")
 		fmt.Println("  TH, th      Log a tails-heads flip")
-		fmt.Println("  egg         Log an exeggutor entry (H, HX, T, TX) or show stats")
+		fmt.Println("  egg         Run the exeggutor command")
+		fmt.Println("  misty       Run the misty command")
 		fmt.Println("  reset       Reset the database")
 		fmt.Println("  undo        Undo the last action")
 		fmt.Println("  dump-csv    Dump the data to CSV files")

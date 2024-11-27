@@ -9,10 +9,23 @@ import (
 	"github.com/alexstory/kanga/data"
 )
 
+const (
+	kanga int = iota
+	egg
+	misty
+)
+
 func main() {
 	kangaFlag := flag.Bool("kanga", false, "Operate on kanga table")
 	eggFlag := flag.Bool("egg", false, "Operate on exeggutor table")
+	mistyFlag := flag.Bool("misty", false, "Operate on misty table")
 	flag.Parse()
+
+	tables := map[data.TableType]bool{
+		data.Kanga: *kangaFlag,
+		data.Egg:   *eggFlag,
+		data.Misty: *mistyFlag,
+	}
 
 	db, err := data.Init()
 	if err != nil {
@@ -52,6 +65,8 @@ func main() {
 		fmt.Printf("flip logged...\n")
 	case "egg":
 		cmd.Egg(db)
+	case "misty":
+		cmd.Misty(db)
 	case "reset":
 		data.Reset(db)
 		fmt.Printf("Data reset\n")
@@ -59,13 +74,7 @@ func main() {
 		data.Undo(db)
 		fmt.Printf("Last flip undone\n")
 	case "dump-csv":
-		table := ""
-		if *kangaFlag {
-			table = "kanga"
-		} else if *eggFlag {
-			table = "egg"
-		}
-		err := data.DumpCsv(db, folder, table)
+		err := data.DumpCsv(db, folder, tables)
 		if err != nil {
 			fmt.Printf("Failed to dump CSV: %v\n", err)
 		} else {

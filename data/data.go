@@ -10,6 +10,14 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type TableType int
+
+const (
+	Kanga TableType = iota
+	Egg
+	Misty
+)
+
 type FlipType int
 
 const (
@@ -63,6 +71,17 @@ func Init() (*sql.DB, error) {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`
 	_, err = db.Exec(createExeggutorTableSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	createMistyTableSQL := `CREATE TABLE IF NOT EXISTS misty (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		heads INTEGER NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);`
+
+	_, err = db.Exec(createMistyTableSQL)
 	if err != nil {
 		return nil, err
 	}
@@ -164,6 +183,11 @@ func Reset(db *sql.DB) {
 	if err != nil {
 		fmt.Printf("Failed to reset exeggutor table: %v\n", err)
 	}
+
+	_, err = db.Exec("DELETE FROM misty")
+	if err != nil {
+		fmt.Printf("Failed to reset misty table: %v\n", err)
+	}
 }
 
 func Undo(db *sql.DB) {
@@ -177,33 +201,32 @@ func Undo(db *sql.DB) {
 	}
 }
 
-func DumpCsv(db *sql.DB, folder string, table string) error {
-	if table == "" || table == "kanga" {
-		err := dumpTable(db, folder, "kanga")
-		if err != nil {
-			return err
-		}
-	}
-	if table == "" || table == "egg" {
-		err := dumpTable(db, folder, "egg")
-		if err != nil {
-			return err
+func DumpCsv(db *sql.DB, folder string, tables map[TableType]bool) error {
+	empty := tableEmpty(tables)
+
+	for table, v := range tables {
+		if empty || v {
+			err := dumpTable(db, folder, table)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func dumpTable(db *sql.DB, folder string, table string) error {
+func dumpTable(db *sql.DB, folder string, table TableType) error {
 	var query, filename string
 	switch table {
-	case "kanga":
+	case Kanga:
 		query = "SELECT heads1, heads2, created_at FROM flips"
 		filename = "kanga.csv"
-	case "egg":
+	case Egg:
 		query = "SELECT heads, mattered, created_at FROM exeggutor"
 		filename = "exeggutor.csv"
-	default:
-		return fmt.Errorf("unknown table: %s", table)
+	case Misty:
+		query = "SELECT heads, created_at FROM misty"
+		filename = "misty.csv"
 	}
 
 	// Create the folder if it doesn't exist
@@ -229,7 +252,7 @@ func dumpTable(db *sql.DB, folder string, table string) error {
 
 	for rows.Next() {
 		var record []string
-		if table == "kanga" {
+		if table == Kanga {
 			var heads1, heads2 int
 			var createdAt string
 			err := rows.Scan(&heads1, &heads2, &createdAt)
@@ -237,7 +260,7 @@ func dumpTable(db *sql.DB, folder string, table string) error {
 				return err
 			}
 			record = []string{fmt.Sprintf("%d", heads1), fmt.Sprintf("%d", heads2), createdAt}
-		} else {
+		} else if table == Egg {
 			var heads int
 			var mattered bool
 			var createdAt string
@@ -246,6 +269,14 @@ func dumpTable(db *sql.DB, folder string, table string) error {
 				return err
 			}
 			record = []string{fmt.Sprintf("%d", heads), fmt.Sprintf("%t", mattered), createdAt}
+		} else if table == Misty {
+			var heads int
+			var createdAt string
+			err := rows.Scan(&heads, &createdAt)
+			if err != nil {
+				return err
+			}
+			record = []string{fmt.Sprintf("%d", heads), createdAt}
 		}
 		err = writer.Write(record)
 		if err != nil {
@@ -345,4 +376,13 @@ func readTable(db *sql.DB, folder string, table string) error {
 	}
 
 	return nil
+}
+
+func tableEmpty(table map[TableType]bool) bool {
+	for _, v := range table {
+		if v {
+			return false
+		}
+	}
+	return true
 }
